@@ -156,7 +156,7 @@ object StackSafety {
   def fib2(n: Int, a: Long = 0, b: Long = 1): IO[Long] =
     IO.suspend {
       if (n > 0)
-        fib(n - 1, b, a + b)
+        fib2(n - 1, b, a + b)
       else
         IO.pure(a)
     }
