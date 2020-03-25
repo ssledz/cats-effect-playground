@@ -4,14 +4,26 @@ import java.util.concurrent.{ScheduledExecutorService, ScheduledThreadPoolExecut
 
 import cats.effect.{ExitCode, IO, IOApp, Timer}
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import TimerPInstances._
 
 object TimerP extends IOApp {
   override def run(args: List[String]): IO[ExitCode] = {
-    val g = scala.concurrent.ExecutionContext.Implicits.global
-    val sc: ScheduledExecutorService = new ScheduledThreadPoolExecutor(1)
+    implicit val g = scala.concurrent.ExecutionContext.Implicits.global
+    implicit val sc: ScheduledExecutorService = new ScheduledThreadPoolExecutor(1)
 
-    val a = for {
+    for {
+      _ <- a
+      _ <- b
+    } yield ExitCode.Success
+  }
+}
+
+object TimerPInstances {
+
+  def a(implicit t: Timer[IO]): IO[Unit] =
+    for {
       t1 <- Timer[IO].clock.realTime(TimeUnit.SECONDS)
       _ <- IO(println(s"seconds $t1"))
       _ <- Timer[IO].sleep(1.seconds)
@@ -19,14 +31,10 @@ object TimerP extends IOApp {
       _ <- IO(println(s"seconds $t2"))
     } yield ()
 
-    val b = for {
+  def b(implicit g: ExecutionContext, sc: ScheduledExecutorService): IO[Unit] =
+    for {
       _ <- IO.timer(g, sc).sleep(1.seconds)
       _ = sc.shutdown()
     } yield ()
 
-    for {
-      _ <- a
-      _ <- b
-    } yield ExitCode.Success
-  }
 }
