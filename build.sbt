@@ -2,7 +2,7 @@ lazy val root = (project in file(".")).settings(
   commonSettings,
   consoleSettings,
   scalaOptions,
-  typeSystemEnhancements,
+  plugins,
   dependencies,
   tests,
   // https://github.com/dwijnand/sbt-dynver#docker-compatible-version-strings
@@ -85,7 +85,10 @@ def scalacOptionsForVersion(version: String): Seq[String] = {
   // format: on
 }
 
-lazy val typeSystemEnhancements = addCompilerPlugin(("org.typelevel" %% "kind-projector" % "0.11.0").cross(CrossVersion.full))
+lazy val plugins = Seq(
+  addCompilerPlugin(("org.typelevel" %% "kind-projector" % "0.11.0").cross(CrossVersion.full)),
+  addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+)
 
 import Dependencies._
 
