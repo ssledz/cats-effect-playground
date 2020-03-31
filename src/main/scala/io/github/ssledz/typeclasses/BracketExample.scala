@@ -33,7 +33,7 @@ object BracketExample extends IOApp {
     def const(value: Int): IO[IntResource] = dbg("creating int const resource") *> IO(ConstIntResource(value))
 
     trait SafeClose extends IntResource {
-      def close(): Unit = unsafeDbg("Closing failing read resource")
+      def close(): Unit = unsafeDbg("Closing resource")
     }
 
     trait FailingRead extends IntResource {
