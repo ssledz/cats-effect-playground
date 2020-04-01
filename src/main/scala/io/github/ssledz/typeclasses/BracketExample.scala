@@ -12,15 +12,27 @@ import scala.concurrent.duration._
 
 object BracketExample extends IOApp with IOApp.WithContext {
 
+  //noinspection DuplicatedCode
   def run(args: List[String]): IO[ExitCode] =
     for {
       _ <- IO(println("=========== bracket ==========="))
+      _ <- bracketExample(IntResource.const(1))
+      //      _ <- bracketExample(dbg("creating failing resource") *> IO(new FailingRead with FailingClose)).attempt.flatMap(a => dbg(a.toString))
+      _ <- bracketExample(dbg("creating failing read resource") *> IO(new FailingRead with SafeClose {})).attempt.flatMap(a => dbg(a.toString))
+      _ <- bracketExample(dbg("creating failing close resource") *> IO(new FailingClose { def readInt: Int = 1 })).attempt.flatMap(a => dbg(a.toString))
+      _ <- IO(println("=========== bracketCase ==========="))
       _ <- bracketCaseExample(IntResource.const(1))
 //      _ <- bracketCaseExample(dbg("creating failing resource") *> IO(new FailingRead with FailingClose)).attempt.flatMap(a => dbg(a.toString))
       _ <- bracketCaseExample(dbg("creating failing read resource") *> IO(new FailingRead with SafeClose {})).attempt.flatMap(a => dbg(a.toString))
       _ <- bracketCaseExample(dbg("creating failing close resource") *> IO(new FailingClose { def readInt: Int = 1 })).attempt.flatMap(a => dbg(a.toString))
-      _ <- IO(println("=========== uncancelle ==========="))
-      _ <- uncancelledExample
+      _ <- IO(println("=========== uncancelable ==========="))
+      _ <- uncancelableExample
+      _ <- IO(println("=========== guarantee ==========="))
+      _ <- guaranteeExample
+      _ <- IO(println("=========== guaranteeCase ==========="))
+      _ <- guaranteeCaseExample
+      _ <- IO(println("=========== onCancel ==========="))
+      _ <- onCancelExample
       _ <- dbg("Finished")
     } yield ExitCode.Success
 
@@ -32,7 +44,22 @@ object BracketExample extends IOApp with IOApp.WithContext {
     def readInt: Int
   }
 
-  def uncancelledExample: IO[Unit] = {
+  def guaranteeExample: IO[Unit] = {
+    IO.unit
+    IO.unit
+  }
+
+  def guaranteeCaseExample: IO[Unit] = {
+    IO.unit
+    IO.unit
+  }
+
+  def onCancelExample: IO[Unit] = {
+    IO.unit
+    IO.unit
+  }
+
+  def uncancelableExample: IO[Unit] = {
     def countTo(max: Int): IO[Int] =
       IO.cancelable[Int] { cb =>
         val go = new AtomicBoolean(true)
@@ -44,6 +71,7 @@ object BracketExample extends IOApp with IOApp.WithContext {
               Thread.sleep(100)
               i = i + 1
             }
+            unsafeDbg(s"cb(Right($i))")
             cb(Right(i))
           }
         }
@@ -57,11 +85,14 @@ object BracketExample extends IOApp with IOApp.WithContext {
       f2 <- countTo(10).start
       _ <- dbg("sleeping") *> IO.sleep(500.millis)
       _ <- f2.cancel
+      _ <- dbg("lets't try uncancelable")
 //      c2 <- f2.join
 //      _ <- dbg(s"counted to c2 = $c2")
       f3 <- Bracket[IO, Throwable].uncancelable(countTo(10)).start
+      f4 <- (dbg("getting c3") *> f3.join).start
+      _ <- dbg("sleeping") *> IO.sleep(100.millis)
       _ <- f3.cancel
-      c3 <- f3.join
+      c3 <- f4.join
       _ <- dbg(s"counted to c3 = $c3")
     } yield ()
 
@@ -102,7 +133,7 @@ object BracketExample extends IOApp with IOApp.WithContext {
 
   protected def executionContextResource: Resource[SyncIO, ExecutionContext] =
     Resource
-      .make(SyncIO(Executors.newFixedThreadPool(8, threadFactory("io-app-thread-"))))(pool =>
+      .make(SyncIO(Executors.newFixedThreadPool(8, threadFactory("io-app-thread"))))(pool =>
         SyncIO {
           pool.shutdown()
           pool.awaitTermination(10, TimeUnit.SECONDS)
