@@ -3,7 +3,7 @@ package io.github.ssledz.typeclasses
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.{Executors, ThreadFactory, TimeUnit}
 
-import cats.effect.{Bracket, ExitCode, IO, IOApp, Resource, SyncIO}
+import cats.effect.{Bracket, ExitCase, ExitCode, IO, IOApp, Resource, SyncIO}
 import cats.implicits._
 import io.github.ssledz.typeclasses.BracketExample.IntResource.{FailingClose, FailingRead, SafeClose}
 
@@ -30,7 +30,7 @@ object BracketExample extends IOApp with IOApp.WithContext {
       _ <- IO(println("=========== guarantee ==========="))
       _ <- guaranteeExample
       _ <- IO(println("=========== guaranteeCase ==========="))
-      _ <- guaranteeCaseExample
+      _ <- guaranteeCaseExample.attempt.flatMap(a => dbg(a.toString))
       _ <- IO(println("=========== onCancel ==========="))
       _ <- onCancelExample
       _ <- dbg("Finished")
@@ -44,41 +44,45 @@ object BracketExample extends IOApp with IOApp.WithContext {
     def readInt: Int
   }
 
+  // F.guarantee(fa)(f) <-> F.bracket(F.unit)(_ => fa)(_ => f)
   def guaranteeExample: IO[Unit] = {
-    IO.unit
-    IO.unit
+    val task = for {
+      res <- IntResource.const(1)
+      _ <- dbg("read int: " + res.readInt)
+    } yield ()
+
+    Bracket[IO, Throwable].guarantee(task)(dbg("running finalizer"))
   }
 
+  // F.guaranteeCase(fa)(f) <-> F.bracketCase(F.unit)(_ => fa)((_, e) => f(e))
   def guaranteeCaseExample: IO[Unit] = {
-    IO.unit
-    IO.unit
+    val task = for {
+      res <- IntResource.const(1)
+      _ <- dbg("read int: " + res.readInt)
+      _ <- IO.raiseError(new RuntimeException("error during reading..."))
+    } yield ()
+
+    Bracket[IO, Throwable].guaranteeCase(task) {
+      case ExitCase.Completed => dbg("running finalizer in case of completed")
+      case ExitCase.Error(e) => dbg("running finalizer in case of error: " + e)
+      case ExitCase.Canceled => dbg("running finalizer in case of canceled")
+    }
   }
 
   def onCancelExample: IO[Unit] = {
-    IO.unit
-    IO.unit
+    val task: IO[Int] =
+      for {
+        f1 <- countTo(10).start
+        f2 <- (dbg("getting value") *> f1.join).start
+        _ <- dbg("sleeping") *> IO.sleep(500.millis)
+        _ <- f1.cancel
+//        c <- f2.join
+        c <- IO.pure(-11)
+      } yield c
+    Bracket[IO, Throwable].onCancel(task)(dbg("restoring counter")).flatMap(c => dbg(s"counter: $c"))
   }
 
-  def uncancelableExample: IO[Unit] = {
-    def countTo(max: Int): IO[Int] =
-      IO.cancelable[Int] { cb =>
-        val go = new AtomicBoolean(true)
-        val r = new Runnable {
-          def run(): Unit = {
-            var i = 0
-            while (go.get && i <= max) {
-              unsafeDbg(s"counter: $i")
-              Thread.sleep(100)
-              i = i + 1
-            }
-            unsafeDbg(s"cb(Right($i))")
-            cb(Right(i))
-          }
-        }
-        scheduler.execute(r)
-        IO(go.set(false))
-      }
-
+  def uncancelableExample: IO[Unit] =
     for {
       c1 <- countTo(2)
       _ <- dbg(s"counted to c1 = $c1")
@@ -95,8 +99,6 @@ object BracketExample extends IOApp with IOApp.WithContext {
       c3 <- f4.join
       _ <- dbg(s"counted to c3 = $c3")
     } yield ()
-
-  }
 
   def bracketCaseExample(resource: IO[IntResource]): IO[Unit] =
     Bracket[IO, Throwable].bracketCase(resource) { resource =>
@@ -130,6 +132,25 @@ object BracketExample extends IOApp with IOApp.WithContext {
     }
 
   }
+
+  def countTo(max: Int): IO[Int] =
+    IO.cancelable[Int] { cb =>
+      val go = new AtomicBoolean(true)
+      val r = new Runnable {
+        def run(): Unit = {
+          var i = 0
+          while (go.get && i <= max) {
+            unsafeDbg(s"counter: $i")
+            Thread.sleep(100)
+            i = i + 1
+          }
+          unsafeDbg(s"cb(Right($i))")
+          cb(Right(i))
+        }
+      }
+      scheduler.execute(r)
+      IO(go.set(false))
+    }
 
   protected def executionContextResource: Resource[SyncIO, ExecutionContext] =
     Resource
