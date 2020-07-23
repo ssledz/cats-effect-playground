@@ -16,7 +16,8 @@ object IOExamples extends IOApp {
 //    StackSafety.app.as(ExitCode.Success)
 //    SyncEffects.app.as(ExitCode.Success)
 //    AsyncEffects.app.as(ExitCode.Success)
-    CancelableProcesses.app.as(ExitCode.Success)
+//    CancelableProcesses.app.as(ExitCode.Success)
+    PureValues.app.foreverM.as(ExitCode.Success)
 
 }
 
@@ -160,4 +161,19 @@ object StackSafety {
       else
         IO.pure(a)
     }
+}
+
+object PureValues {
+
+  def app(implicit timer: Timer[IO]): IO[Unit] = {
+    val app = for {
+    _ <- IO.unit
+      ts <- IO.fromEither(Right(System.currentTimeMillis()))
+      _ <- IO(println(s"ts = $ts"))
+      _ <- timer.sleep(1.second)
+    } yield ()
+
+    app
+  }
+
 }
